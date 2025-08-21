@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Passport Data Extractor</title>
+    <!-- Tailwind CSS for modern styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- jsPDF and html2canvas for PDF generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.4);
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: 15% auto;
+            padding: 24px;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 500px;
+        }
+        .close-button {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+        }
+        .close-button:hover,
+        .close-button:focus {
+            color: #000;
+            text-decoration: none;
+            cursor: pointer;
+        }
+        .drop-area {
+            border: 2px dashed #9ca3af;
+            border-radius: 1.5rem;
+            padding: 2rem;
+            text-align: center;
+            transition: border-color 0.3s ease;
+        }
+        .drop-area.drag-over {
+            border-color: #8b5cf6;
+            background-color: #f3f4f6;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 p-4 sm:p-8 flex flex-col items-center min-h-screen">
+
+    <div class="bg-white p-6 sm:p-10 rounded-3xl shadow-2xl w-full max-w-4xl text-center">
+        <h1 class="text-3xl sm:text-4xl font-extrabold text-gray-800 mb-2">Passport Data Extractor</h1>
+        <p class="text-gray-500 mb-6 sm:mb-8">Upload passport images to extract data, edit, and export.</p>
+        
+        <!-- File input and loading indicator -->
+        <div class="mb-8">
+            <label class="block text-gray-700 font-semibold mb-2 text-left">Upload Passport Images</label>
+            <div id="dropArea" class="drop-area cursor-pointer">
+                <p class="text-gray-500 mb-4">Drag & drop your files here</p>
+                <button class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-full shadow-lg transition duration-200 ease-in-out transform hover:scale-105 flex items-center space-x-2 mx-auto">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 2h2v2H6V6zm2 4H6v2h2v-2zm2 0h2v2h-2v-2zm-2 4H6v2h2v-2zm6-4v2h2v-2h-2zm-2 4h2v2h-2v-2z" clip-rule="evenodd" />
+                    </svg>
+                    <span>Choose a file</span>
+                </button>
+                <input type="file" id="imageInput" multiple accept="image/*" class="hidden">
+            </div>
+        </div>
+
+        <div id="loading" class="flex flex-col items-center justify-center p-6 bg-gray-50 rounded-2xl hidden">
+            <div class="animate-spin rounded-full h-12 w-12 border-4 border-violet-500 border-t-transparent mb-4"></div>
+            <p class="text-violet-700 font-semibold text-lg">Scanning images...</p>
+            <p id="loadingStatus" class="text-sm text-gray-500 mt-2"></p>
+        </div>
+
+        <!-- Data table -->
+        <div id="resultsSection" class="mt-8 hidden">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4 text-left">Extracted Data</h2>
+            <div class="overflow-x-auto rounded-xl shadow-lg border border-gray-200">
+                <table id="dataTable" class="min-w-full bg-white divide-y divide-gray-200">
+                    <thead class="bg-gray-100">
+                        <tr>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Full Name</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date of Birth</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">EP/EQ Number</th>
+                            <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200" id="tableBody">
+                        <!-- Data rows will be inserted here by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Download buttons -->
+        <div id="downloadButtons" class="mt-8 flex justify-center space-x-4 hidden">
+            <button id="downloadPdfBtn" class="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-6 rounded-2xl shadow-lg transition duration-200 ease-in-out transform hover:scale-105">
+                Download as PDF
+            </button>
+            <button id="downloadCsvBtn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-2xl shadow-lg transition duration-200 ease-in-out transform hover:scale-105">
+                Download as CSV
+            </button>
+        </div>
+    </div>
+
+    <!-- Edit Modal -->
+    <div id="editModal" class="modal">
+        <div class="modal-content">
+            <span class="close-button">&times;</span>
+            <h3 class="text-2xl font-bold mb-4">Edit Data</h3>
+            <form id="editForm">
+                <div class="mb-4">
+                    <label class="block text-gray-700 font-bold mb-2">Full Name</label>
+                    <input type="text" id="editName" class="shadow appearance-none border rounded-xl w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
+                </div>
+                <div class="mb-4">
+                    <label class="block text-gray-700 font-bold mb-2">Date of Birth</label>
+                    <input type="text" id="editDob" class="shadow appearance-none border rounded-xl w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
+                </div>
+                <div class="mb-4">
+                    <label class="block text-gray-700 font-bold mb-2">EP/EQ Number</label>
+                    <input type="text" id="editNumber" class="shadow appearance-none border rounded-xl w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
+                </div>
+                <div class="flex justify-end">
+                    <button type="submit" class="bg-violet-600 hover:bg-violet-700 text-white font-bold py-2 px-4 rounded-full shadow-lg transition duration-200 ease-in-out">
+                        Save Changes
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const imageInput = document.getElementById('imageInput');
+            const dropArea = document.getElementById('dropArea');
+            const loadingIndicator = document.getElementById('loading');
+            const loadingStatus = document.getElementById('loadingStatus');
+            const resultsSection = document.getElementById('resultsSection');
+            const dataTable = document.getElementById('dataTable');
+            const tableBody = document.getElementById('tableBody');
+            const downloadPdfBtn = document.getElementById('downloadPdfBtn');
+            const downloadCsvBtn = document.getElementById('downloadCsvBtn');
+            const downloadButtons = document.getElementById('downloadButtons');
+
+            const editModal = document.getElementById('editModal');
+            const editForm = document.getElementById('editForm');
+            const editName = document.getElementById('editName');
+            const editDob = document.getElementById('editDob');
+            const editNumber = document.getElementById('editNumber');
+            const closeButton = document.querySelector('.close-button');
+
+            let currentEditRow = null;
+
+            // This API key is left empty as per instructions, it will be provided at runtime.
+            const apiKey = "";
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+
+            // Handle drag and drop events
+            dropArea.addEventListener('click', () => imageInput.click());
+            dropArea.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dropArea.classList.add('drag-over');
+            });
+            dropArea.addEventListener('dragleave', () => {
+                dropArea.classList.remove('drag-over');
+            });
+            dropArea.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropArea.classList.remove('drag-over');
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {
+                    processFiles(files);
+                }
+            });
+
+            // Handle file selection from input
+            imageInput.addEventListener('change', (event) => {
+                const files = event.target.files;
+                if (files.length > 0) {
+                    processFiles(files);
+                }
+            });
+
+            // Unified function to process files from either input or drop
+            async function processFiles(files) {
+                // Reset UI
+                tableBody.innerHTML = '';
+                resultsSection.classList.add('hidden');
+                downloadButtons.classList.add('hidden');
+
+                loadingIndicator.classList.remove('hidden');
+                loadingStatus.textContent = `Scanning ${files.length} images...`;
+
+                try {
+                    // Process files sequentially using a for...of loop
+                    for (const file of files) {
+                        loadingStatus.textContent = `Scanning ${file.name}...`;
+                        const base64Data = await fileToBase64(file);
+                        const data = await extractDataWithGemini(base64Data);
+                        addRowToTable(data);
+                    }
+                } catch (error) {
+                    console.error('OCR failed:', error);
+                    addRowToTable({
+                        fullName: 'Extraction failed',
+                        dateOfBirth: 'N/A',
+                        epEqNumber: 'N/A'
+                    });
+                } finally {
+                    loadingIndicator.classList.add('hidden');
+                    resultsSection.classList.remove('hidden');
+                    downloadButtons.classList.remove('hidden');
+                    loadingStatus.textContent = ''; // Clear status message
+                }
+            }
+
+            // Converts a File object to a base64 string
+            function fileToBase64(file) {
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                        const base64String = reader.result.split(',')[1];
+                        resolve(base64String);
+                    };
+                    reader.onerror = error => reject(error);
+                    reader.readAsDataURL(file);
+                });
+            }
+
+            // Calls the Gemini API with the image and a structured prompt
+            async function extractDataWithGemini(base64ImageData) {
+                const payload = {
+                    contents: [
+                        {
+                            role: "user",
+                            parts: [
+                                // The updated prompt with more specific instructions for full name extraction
+                                { text: "Extract the full name from the passport image, including all given names and last names, exactly as they appear. Also extract the Date of Birth and EP/EQ Number. Return the output as a single JSON object with the keys 'fullName', 'dateOfBirth', and 'epEqNumber'. If a field is not found, use 'N/A'. Please be as precise as possible when extracting the full name to capture all parts, including middle names or multi-part last names." },
+                                {
+                                    inlineData: {
+                                        mimeType: "image/png",
+                                        data: base64ImageData
+                                    }
+                                }
+                            ]
+                        }
+                    ],
+                    // A generation config with a response schema ensures a structured output
+                    generationConfig: {
+                        responseMimeType: "application/json",
+                        responseSchema: {
+                            type: "OBJECT",
+                            properties: {
+                                "fullName": { "type": "STRING" },
+                                "dateOfBirth": { "type": "STRING" },
+                                "epEqNumber": { "type": "STRING" }
+                            },
+                            "propertyOrdering": ["fullName", "dateOfBirth", "epEqNumber"]
+                        }
+                    }
+                };
+
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`API call failed with status: ${response.status}`);
+                }
+
+                const result = await response.json();
+                const jsonText = result?.candidates?.[0]?.content?.parts?.[0]?.text;
+
+                if (jsonText) {
+                    return JSON.parse(jsonText);
+                } else {
+                    throw new Error("API response was not in the expected format.");
+                }
+            }
+
+            // Function to add a new row to the table
+            function addRowToTable(data) {
+                const newRow = tableBody.insertRow();
+                newRow.innerHTML = `
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${data.fullName}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${data.dateOfBirth}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${data.epEqNumber}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                        <button class="editBtn text-violet-600 hover:text-violet-900 font-bold transition-colors">Edit</button>
+                    </td>
+                `;
+                newRow.querySelector('.editBtn').addEventListener('click', () => {
+                    openEditModal(newRow, data);
+                });
+            }
+
+            // Function to open the edit modal
+            function openEditModal(row, data) {
+                currentEditRow = row;
+                editName.value = data.fullName;
+                editDob.value = data.dateOfBirth;
+                editNumber.value = data.epEqNumber;
+                editModal.style.display = 'block';
+            }
+            
+            // Handle closing the modal
+            closeButton.addEventListener('click', () => {
+                editModal.style.display = 'none';
+            });
+            window.addEventListener('click', (event) => {
+                if (event.target === editModal) {
+                    editModal.style.display = 'none';
+                }
+            });
+
+            // Handle saving changes from the modal
+            editForm.addEventListener('submit', (event) => {
+                event.preventDefault();
+                if (currentEditRow) {
+                    const newName = editName.value;
+                    const newDob = editDob.value;
+                    const newNumber = editNumber.value;
+                    
+                    currentEditRow.cells[0].textContent = newName;
+                    currentEditRow.cells[1].textContent = newDob;
+                    currentEditRow.cells[2].textContent = newNumber;
+                    
+                    editModal.style.display = 'none';
+                }
+            });
+
+            // Handle PDF download
+            downloadPdfBtn.addEventListener('click', () => {
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF();
+                
+                // Get table data
+                const tableData = [];
+                const headers = ['Full Name', 'Date of Birth', 'EP/EQ Number'];
+                tableData.push(headers);
+                
+                const rows = dataTable.querySelectorAll('tbody tr');
+                rows.forEach(row => {
+                    const rowData = [
+                        row.cells[0].textContent,
+                        row.cells[1].textContent,
+                        row.cells[2].textContent,
+                    ];
+                    tableData.push(rowData);
+                });
+
+                doc.autoTable({
+                    head: [headers],
+                    body: tableData.slice(1) // Skip the header row for the body
+                });
+
+                doc.save('passport_data.pdf');
+            });
+
+            // Handle CSV/Excel download
+            downloadCsvBtn.addEventListener('click', () => {
+                const tableData = [];
+                const headers = ['"Full Name"', '"Date of Birth"', '"EP/EQ Number"'];
+                tableData.push(headers);
+
+                const rows = dataTable.querySelectorAll('tbody tr');
+                rows.forEach(row => {
+                    const rowData = [
+                        `"${row.cells[0].textContent.replace(/"/g, '""')}"`,
+                        `"${row.cells[1].textContent.replace(/"/g, '""')}"`,
+                        `"${row.cells[2].textContent.replace(/"/g, '""')}"`,
+                    ];
+                    tableData.push(rowData);
+                });
+
+                const csvContent = tableData.map(e => e.join(",")).join("\n");
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.setAttribute('href', url);
+                link.setAttribute('download', 'passport_data.csv');
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            });
+        });
+    </script>
+</body>
+</html>
